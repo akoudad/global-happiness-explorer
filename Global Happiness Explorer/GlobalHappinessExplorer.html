@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Global Happiness Explorer — Single‑year means</title>
+  <meta name="description" content="Interactive map & trends of life evaluation (Cantril ladder) using World Happiness Report / Gallup data via Our World in Data. Values shown are single‑year averages labeled by the final year." />
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root{--bg1:#0b0d11;--bg2:#0f1217;--card:#12151c;--muted:#8b93a3;--text:#e5e7eb;--border:rgba(255,255,255,.08)}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,var(--bg1),var(--bg2));color:var(--text);font:14px/1.55 Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    a{color:#93c5fd;text-decoration:none} a:hover{text-decoration:underline}
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
+    header.sticky{position:sticky;top:0;z-index:40;background:linear-gradient(180deg,rgba(11,13,17,.95),rgba(11,13,17,.85),transparent);backdrop-filter: blur(10px);border-bottom:1px solid var(--border)}
+    .nav{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .brand{font-weight:650;letter-spacing:.2px}
+    .links{display:flex;gap:16px} .links a{color:var(--muted)} .links a.active,.links a:hover{color:var(--text)}
+    .controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0 0}
+    input[type="range"]{accent-color:#60a5fa}
+    .pill{border:1px solid var(--border);padding:6px 10px;border-radius:999px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1.25fr .95fr;gap:16px;margin-top:16px}
+    @media (max-width:1000px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+    .map-svg{width:100%;height:520px;border-radius:10px;background:linear-gradient(180deg,#0c1016,#0b0d11)}
+    .country{stroke:rgba(255,255,255,.2);stroke-width:.6;cursor:pointer;transition:filter .2s}
+    .country:hover{filter:brightness(1.2)}
+    .legend{position:absolute;right:12px;bottom:12px;background:#0b0d11;border:1px solid var(--border);border-radius:8px;padding:6px 8px}
+    .legend div{display:flex;gap:6px;align-items:center;margin:2px 0}
+    .tooltip{position:fixed;pointer-events:none;background:#0b0d11;border:1px solid var(--border);padding:8px 10px;border-radius:8px;opacity:0;transform:translate(-50%,-130%);font-size:12px}
+    .banner{display:none;margin:10px 0;border:1px solid #3f3f46;background:#18181b;color:#e4e4e7;padding:10px 12px;border-radius:10px}
+    .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .chip{font-size:12px;padding:6px 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.03);cursor:pointer}
+    .muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header class="sticky">
+    <div class="wrap nav">
+      <div class="brand">Global Happiness Explorer</div>
+      <nav class="links">
+        <a href="#map-section" class="active">Map</a>
+        <a href="#compare">Compare</a>
+        <a href="#about">About</a>
+      </nav>
+    </div>
+    <div class="wrap controls">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span>Year</span>
+        <input id="year" type="range" min="2011" max="2024" step="1" value="2024">
+        <span class="pill" id="year-pill">2024</span>
+        <span class="pill" id="coverage-pill" title="Countries with a single‑year value for this year">Coverage: …</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="add" list="country-list" placeholder="Add country…" style="min-width:220px;background:rgba(255,255,255,.02); border:1px solid var(--border); color:var(--text); padding:8px 10px;border-radius:10px">
+        <datalist id="country-list"></datalist>
+        <button id="clear" style="background:rgba(255,255,255,.02);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer">Clear</button>
+        <button id="share" style="background:#1f2937;border:1px solid #374151;color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer">Copy link</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div id="banner" class="banner">Couldn’t load data or map from this local file. In Brave, turn Shields off for this file, or run a tiny local server: <code>python3 -m http.server</code> in this folder then open <code>http://localhost:8000</code>.</div>
+
+    <section id="map-section" class="grid">
+      <div class="card" style="position:relative">
+        <h2 style="margin:0 0 8px">Choropleth map</h2>
+        <svg id="map" class="map-svg"></svg>
+        <div class="legend">
+          <div><span style="display:inline-block;width:12px;height:12px;background:#ff4d4d;border-radius:3px"></span><span>0–4</span></div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#ffb733;border-radius:3px"></span><span>4–6</span></div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#4dff4d;border-radius:3px"></span><span>6–8</span></div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#00cc00;border-radius:3px"></span><span>8–10</span></div>
+        </div>
+        <div class="muted" style="margin-top:6px">Scroll to zoom, drag to pan. Colors: red → green. Values on the 0–10 Cantril ladder.</div>
+      </div>
+
+      <div id="compare" class="card">
+        <h2 style="margin:0 0 8px">Compare countries over time</h2>
+        <div class="chips" id="chips"></div>
+        <div style="height:380px;margin-top:8px"><canvas id="chart"></canvas></div>
+        <div class="muted" style="font-size:12px;margin-top:6px">Tip: click countries on the map to add/remove (max 6). Type to add via the box above.</div>
+      </div>
+    </section>
+
+    <section id="about" class="card" style="margin-top:16px">
+      <h2 style="margin:0 0 8px">About & sources</h2>
+      <ul>
+        <li><strong>Data</strong>: <a href="https://ourworldindata.org/explorers/happiness#life-satisfaction-cantril-ladder" target="_blank" rel="noopener">Our World in Data — Self‑reported life satisfaction (Cantril ladder)</a>, based on the <a href="https://www.gallup.com/analytics/349280/gallup-world-poll.aspx" target="_blank" rel="noopener">Gallup World Poll</a> and used by the <a href="https://worldhappiness.report/" target="_blank" rel="noopener">World Happiness Report</a>. Raw file used here: <a href="https://ourworldindata.org/grapher/happiness-cantril-ladder.csv" target="_blank" rel="noopener">happiness‑cantril‑ladder.csv</a>.</li>
+        <li><strong>Metric shown</strong>: <em>Single‑year country mean</em> of life‑evaluation scores on the Cantril ladder (0–10). No 3‑year averaging.</li>
+        <li><strong>How we use it</strong>: we display the values exactly as provided in the OWID file (no extra smoothing or re‑averaging). If a country has no value for an end‑year, it shows as gray / “No data”.</li>
+        <li><strong>Provenance</strong>: Source last updated on <span id="source-last-updated">Mar 28, 2025</span> (per OWID’s dataset page). This page downloaded the CSV on <span id="downloaded-at"></span>.</li>
+        <li><strong>Labeling note</strong>: The tooltip label for “Western Sahara” is customized to display “Moroccan Western Sahara.” This changes labels only — <em>not</em> data values.</li>
+      </ul>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip"></div>
+
+<script>
+(async function(){
+  const CSV = 'https://ourworldindata.org/grapher/happiness-cantril-ladder.csv';
+  const GEO = 'https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson';
+
+  // Display label override (does not change data)
+  const CUSTOM_LABELS = {"Western Sahara":"Moroccan Western Sahara"};
+
+  const MAX_SELECT = 6;
+  const $ = s=>document.querySelector(s);
+  const yearEl = $('#year'), yearPill = $('#year-pill');
+  const addInput = $('#add'), dataList = $('#country-list'), chipbar = $('#chips');
+  const tooltip = $('#tooltip'), banner = $('#banner'), coveragePill = $('#coverage-pill');
+  const mapSvg = d3.select('#map');
+  let geo = null, chart = null;
+
+  // Name normalization for joining map->data
+  const NAME_FIX = new Map(Object.entries({
+    "USA":"United States","U.S.A.":"United States","United States of America":"United States",
+    "UK":"United Kingdom","U.K.":"United Kingdom","Great Britain":"United Kingdom",
+    "Russian Federation":"Russia",
+    "Czechia":"Czech Republic",
+    "Korea, Republic of":"South Korea","Republic of Korea":"South Korea","Korea (Republic of)":"South Korea",
+    "North Macedonia":"North Macedonia",
+    "Lao PDR":"Laos",
+    "Viet Nam":"Vietnam",
+    "Syrian Arab Republic":"Syria",
+    "Iran (Islamic Republic of)":"Iran",
+    "Bolivia (Plurinational State of)":"Bolivia",
+    "Venezuela (Bolivarian Republic of)":"Venezuela",
+    "Côte d'Ivoire":"Cote d'Ivoire",
+    "Cabo Verde":"Cape Verde",
+    "Swaziland":"Eswatini",
+    "The Bahamas":"Bahamas","Bahamas, The":"Bahamas",
+    "The Gambia":"Gambia","Gambia, The":"Gambia",
+    "Curaçao":"Curacao",
+    "Timor-Leste":"Timor","East Timor":"Timor",
+    "Congo, Democratic Republic of the":"Democratic Republic of Congo",
+    "Congo, Republic of the":"Republic of Congo",
+    "United Republic of Tanzania":"Tanzania",
+    "Micronesia (Federated States of)":"Micronesia",
+    "São Tomé and Príncipe":"Sao Tome and Principe","Sao Tome & Principe":"Sao Tome and Principe",
+    "St. Kitts and Nevis":"Saint Kitts and Nevis","St. Vincent and the Grenadines":"Saint Vincent and the Grenadines","St. Lucia":"Saint Lucia"
+  }));
+
+  // Provenance stamps
+  document.getElementById('downloaded-at').textContent = new Date().toUTCString();
+
+  // Load rows
+  let rows;
+  try{ rows = await d3.csv(CSV); }catch(e){ console.error(e); banner.style.display='block'; }
+  if(!rows){ $('#map').innerHTML = '<div style="color:#e5e7eb">Failed to load data.</div>'; return; }
+
+  // Detect the value column (OWID field usually "Life satisfaction (Cantril Ladder, 0-10)")
+  let valueKey = Object.keys(rows[0]).find(k=>/cantril|life\s*sat/i.test(k)) || Object.keys(rows[0])[3];
+
+  const yearsAll = Array.from(new Set(rows.map(r=>+r.Year))).sort((a,b)=>a-b);
+  yearEl.min = yearsAll[0]; yearEl.max = yearsAll[yearsAll.length-1];
+  if(+yearEl.value>+yearEl.max) yearEl.value=yearEl.max; yearPill.textContent = yearEl.value;
+
+  // Group by country (ISO) and by year
+  const byISO = d3.group(rows.filter(r=>r.Code && r.Code.length===3 && r[valueKey]!==''), r=>r.Code);
+  const byYearISO = new Map(yearsAll.map(y=>[y,new Map()]));
+  rows.forEach(r=>{ const y=+r.Year, v=+r[valueKey]; if(Number.isFinite(v)) byYearISO.get(y).set(r.Code, v); });
+
+  const nameByISO = new Map(), isoByName = new Map();
+  rows.forEach(r=>{ if(r.Code && r.Code.length===3){ nameByISO.set(r.Code, r.Entity); if(!isoByName.has(r.Entity)) isoByName.set(r.Entity, r.Code); }});
+  const countryNames = Array.from(new Set(rows.filter(r=>r.Code.length===3).map(r=>r.Entity))).sort();
+  dataList.innerHTML = countryNames.map(n=>`<option value="${n}">`).join('');
+
+  // Defaults from URL
+  const params = new URLSearchParams(location.search);
+  let selected = (params.get('c') || 'MAR,USA').split(',').filter(c=>byISO.has(c)).slice(0,MAX_SELECT);
+  yearEl.value = + (params.get('y') || yearEl.value);
+
+  function getValue(code, year){
+    return byYearISO.get(year)?.get(code); // AS-IS from OWID (already WHR 3y avg)
+  }
+  const fixName = n => NAME_FIX.get(n) || n;
+  const displayLabel = n => CUSTOM_LABELS[n] || n;
+
+  // GeoJSON
+  let world;
+  try{ world = await d3.json(GEO); }catch(e){ console.error('Geo fetch failed', e); }
+  if(world && world.features) { geo = world; }
+
+  function computeCoverage(y){
+    let n=0;
+    for (const iso of nameByISO.keys()){
+      const v = getValue(iso, y);
+      if(Number.isFinite(v)) n++;
+    }
+    return n;
+  }
+  function updateCoveragePill(){
+    const y = +yearEl.value;
+    const n = computeCoverage(y);
+    coveragePill.textContent = `Coverage: ${n} countries`;
+  }
+
+  function drawMap(){
+    mapSvg.selectAll('*').remove();
+    const width = mapSvg.node().clientWidth || 1000, height = 520;
+    mapSvg.attr('viewBox', `0 0 ${width} ${height}`);
+
+    // Create a group so we can apply zoom/pan transforms
+    const g = mapSvg.append('g');
+
+    const projection = d3.geoMercator().scale(130).translate([width/2, height/1.5]);
+    const path = d3.geoPath(projection);
+
+    const year = +yearEl.value;
+    const color = d3.scaleThreshold().domain([4,6,8]).range(["#ff4d4d","#ffb733","#4dff4d","#00cc00"]);
+
+    if(geo){
+      g.selectAll('path.country')
+        .data(geo.features)
+        .join('path')
+        .attr('class','country')
+        .attr('d', path)
+        .attr('fill', d=>{
+          const name = fixName(d.properties.name);
+          const iso = isoByName.get(name);
+          const v = iso ? getValue(iso, year) : undefined;
+          return Number.isFinite(v) ? color(v) : '#343a46';
+        })
+        .on('mousemove', (ev,d)=>{
+          const n0 = fixName(d.properties.name);
+          const n = displayLabel(n0);
+          const iso = isoByName.get(n0); const v = iso ? getValue(iso, year) : undefined;
+          tooltip.style.opacity = 1;
+          tooltip.innerHTML = `<strong>${n}</strong><br>${Number.isFinite(v)? v.toFixed(2)+' / 10':'No data'}<div class="muted">Year: ${year}</div>`;
+          tooltip.style.left = (ev.pageX+10)+'px'; tooltip.style.top = (ev.pageY-10)+'px';
+        })
+        .on('mouseleave', ()=> tooltip.style.opacity = 0)
+        .on('click', (_,d)=>{
+          const n0 = fixName(d.properties.name);
+          const iso = isoByName.get(n0);
+          if(iso) toggle(iso);
+        });
+
+      // Enable zoom & pan
+      const zoom = d3.zoom().scaleExtent([1, 8]).on('zoom', (event)=>{
+        g.attr('transform', event.transform);
+      });
+      mapSvg.call(zoom);
+    }else{
+      banner.style.display='block';
+    }
+    updateCoveragePill();
+  }
+
+  // Compare chart
+  const ctx = document.getElementById('chart');
+  function series(code){
+    const arr = byISO.get(code) || [];
+    return arr.map(r=>({x:+r.Year, y:+r[valueKey]})).filter(d=>Number.isFinite(d.y));
+  }
+  function renderChart(){
+    const palette = ['#60a5fa','#a78bfa','#34d399','#f59e0b','#ef4444','#22d3ee'];
+    const datasets = selected.map((code,i)=>({
+      label: nameByISO.get(code) || code,
+      data: series(code),
+      parsing:false,
+      borderColor: palette[i%palette.length],
+      backgroundColor: palette[i%palette.length]+'33',
+      tension:.35,
+      borderWidth:2,
+      pointRadius:2.2,
+    }));
+    if(chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type:'line', data:{datasets},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{labels:{color:'#cbd5e1'}}, tooltip:{mode:'nearest',intersect:false} },
+        scales:{
+          x:{type:'linear', min:+yearEl.min, max:+yearEl.max, ticks:{color:'#94a3b8', callback:v=>v|0},
+             grid:{color:'rgba(148,163,184,.15)'}},
+          y:{min:0, max:10, ticks:{color:'#94a3b8'}, grid:{color:'rgba(148,163,184,.15)'}}
+        }
+      }
+    });
+  }
+
+  // Selection and sharing
+  function toggle(code){
+    if(!byISO.has(code)) return;
+    if(selected.includes(code)) selected = selected.filter(c=>c!==code);
+    else { if(selected.length>=MAX_SELECT) selected.shift(); selected.push(code); }
+    renderChips(); renderChart(); updateURL();
+  }
+  function renderChips(){
+    chipbar.innerHTML = '';
+    selected.forEach(code=>{
+      const div = document.createElement('div'); div.className='chip'; div.textContent = nameByISO.get(code) || code;
+      div.title='Remove'; div.onclick=()=> toggle(code); chipbar.appendChild(div);
+    });
+  }
+  addInput.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){
+      const code = isoByName.get(addInput.value.trim());
+      if(code) toggle(code);
+      addInput.value='';
+    }
+  });
+  function updateURL(){
+    const p = new URLSearchParams();
+    p.set('y', yearEl.value);
+    if(selected.length) p.set('c', selected.join(','));
+    history.replaceState(null,'', location.pathname + '?' + p.toString());
+  }
+  document.getElementById('share').onclick = ()=>{ updateURL(); navigator.clipboard.writeText(location.href).then(()=>alert('Link copied')); };
+  document.getElementById('clear').onclick = ()=>{ selected=[]; renderChips(); renderChart(); };
+
+  window.addEventListener('resize', ()=> drawMap());
+  yearEl.addEventListener('input', ()=>{ yearPill.textContent = yearEl.value; drawMap(); updateURL(); });
+
+  // Initial render
+  try{ await d3.json(GEO).then(g=>{if(g && g.features) geo=g;}); }catch(e){ console.error('Geo fetch failed', e); }
+  drawMap();
+  renderChips(); renderChart(); updateURL();
+})();</script>
+
+  <footer class="wrap" style="text-align:center; color: var(--muted); padding: 12px 0; font-size:12px; border-top: 1px solid var(--border); margin-top: 12px;">
+    Built by <strong>A.karim</strong>
+  </footer>
+</body>
+</html>
